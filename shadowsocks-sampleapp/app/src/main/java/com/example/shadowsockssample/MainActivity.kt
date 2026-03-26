@@ -3,6 +3,8 @@ package com.example.shadowsockssample
 import android.content.Intent
 import android.net.VpnService
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.result.contract.ActivityResultContracts
@@ -96,8 +98,30 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onDisconnectClicked() {
-        setButtonsEnabled(false)
+        // Immediately restore Connect button highlight and disable Disconnect
+        binding.btnConnect.isEnabled = true
+        binding.btnDisconnect.isEnabled = false
+        setStatus("Disconnecting…")
         ShadowsocksSDK.disconnect(this)
+        // Poll state until SDK confirms stopped, then show Disconnected
+        pollUntilDisconnected()
+    }
+
+    private fun pollUntilDisconnected() {
+        val handler = Handler(Looper.getMainLooper())
+        val pollInterval = 500L // check every 500ms
+        handler.postDelayed(object : Runnable {
+            override fun run() {
+                val state = ShadowsocksSDK.getState()
+                if (state == ShadowsocksState.STOPPED || state == ShadowsocksState.IDLE) {
+                    setStatus("Disconnected")
+                    binding.tvTraffic.text = ""
+                    binding.progressBar.visibility = View.GONE
+                } else {
+                    handler.postDelayed(this, pollInterval)
+                }
+            }
+        }, pollInterval)
     }
 
     // ── VPN helpers ───────────────────────────────────────────────────────────
