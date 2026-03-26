@@ -1,0 +1,2 @@
+This code is forked from https://github.com/shadowsocks/shadowsocks-android  on 26 March 2026
+commit: ae28fd91 — version 5.3.5-nightly
