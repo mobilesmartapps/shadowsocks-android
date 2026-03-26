@@ -1,4 +1,4 @@
 plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
-include(":core", ":plugin", ":mobile", ":tv")
+include(":core", ":plugin", ":mobile", ":tv", ":shadowsocks-sdk")

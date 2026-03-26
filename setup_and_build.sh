@@ -202,11 +202,17 @@ chmod +x gradlew
 ANDROID_HOME="$ANDROID_HOME" \
 ANDROID_NDK_HOME="$ANDROID_NDK_HOME" \
 JAVA_HOME="$JAVA_HOME" \
-./gradlew :mobile:assembleDebug --stacktrace
+./gradlew :plugin:assembleDebug :core:assembleDebug :shadowsocks-sdk:assembleDebug :mobile:assembleDebug --stacktrace
 
 echo ""
 echo "============================================"
 echo "  Build complete!"
-echo "  APK location:"
+echo ""
+echo "  APK:"
 find "$PROJECT_DIR/mobile/build/outputs/apk" -name "*.apk" 2>/dev/null || echo "  mobile/build/outputs/apk/"
+echo ""
+echo "  SDK AARs:"
+find "$PROJECT_DIR/plugin/build/outputs/aar" -name "*.aar" 2>/dev/null
+find "$PROJECT_DIR/core/build/outputs/aar" -name "*.aar" 2>/dev/null
+find "$PROJECT_DIR/shadowsocks-sdk/build/outputs/aar" -name "*.aar" 2>/dev/null
 echo "============================================"

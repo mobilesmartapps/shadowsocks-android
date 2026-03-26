@@ -1,0 +1,77 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Permissions required for VPN -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <queries>
+        <intent>
+            <action android:name="com.github.shadowsocks.plugin.ACTION_NATIVE_PLUGIN" />
+        </intent>
+    </queries>
+
+    <application>
+
+        <!-- VPN foreground service -->
+        <service
+            android:name="com.github.shadowsocks.bg.VpnService"
+            android:process=":bg"
+            android:directBootAware="true"
+            android:label="VPN Service"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:foregroundServiceType="systemExempted"
+            android:exported="false"
+            tools:ignore="ForegroundServicePermission">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+
+        <!-- Proxy-only foreground service -->
+        <service
+            android:name="com.github.shadowsocks.bg.ProxyService"
+            android:process=":bg"
+            android:directBootAware="true"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Proxy service that handles incoming SOCKS5 traffic" />
+        </service>
+
+        <!-- Transparent proxy foreground service -->
+        <service
+            android:name="com.github.shadowsocks.bg.TransproxyService"
+            android:process=":bg"
+            android:directBootAware="true"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Proxy service that handles incoming SOCKS5 and Transproxy traffic" />
+        </service>
+
+        <!-- Subscription sync service -->
+        <service
+            android:name="com.github.shadowsocks.subscription.SubscriptionService"
+            android:exported="false" />
+
+        <!-- Room multi-process invalidation -->
+        <service
+            android:name="androidx.room.MultiInstanceInvalidationService"
+            android:process=":bg" />
+
+        <!-- Firebase (remove auto-init to avoid conflicts; host app handles it) -->
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            tools:node="remove" />
+
+    </application>
+</manifest>

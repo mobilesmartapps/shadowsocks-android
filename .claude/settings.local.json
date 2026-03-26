@@ -6,7 +6,16 @@
       "Bash(wsl -e bash -c \"java -version 2>&1; echo JAVA_HOME=$JAVA_HOME; ls /home/sgnav/android-sdk/ndk/ 2>/dev/null; ls /home/sgnav/android-sdk/platforms/ 2>/dev/null; ls /home/sgnav/android-sdk/build-tools/ 2>/dev/null\")",
       "Bash(wsl -e bash -c \":*)",
       "Bash(wsl -e bash -c \"cat /mnt/f/claude/myshadowsocks/.gitmodules 2>/dev/null || echo ''NO GITMODULES''\")",
-      "Bash(wsl -e bash -c \"cd /mnt/f/claude/myshadowsocks && git submodule update --init --recursive 2>&1\")"
+      "Bash(wsl -e bash -c \"cd /mnt/f/claude/myshadowsocks && git submodule update --init --recursive 2>&1\")",
+      "Bash(wsl -e bash -c \"find /mnt/f/claude/myshadowsocks/shadowsocks-sdk/build/outputs -name ''*.aar'' 2>/dev/null\")",
+      "Bash(mkdir -p F:/claude/myshadowsocks_sampleapp/app/libs)",
+      "Bash(cp F:/claude/myshadowsocks/core/build/outputs/aar/core-debug.aar F:/claude/myshadowsocks_sampleapp/app/libs/)",
+      "Bash(cp F:/claude/myshadowsocks/plugin/build/outputs/aar/plugin-debug.aar F:/claude/myshadowsocks_sampleapp/app/libs/)",
+      "Bash(cp F:/claude/myshadowsocks/shadowsocks-sdk/build/outputs/aar/shadowsocks-sdk-debug.aar F:/claude/myshadowsocks_sampleapp/app/libs/)",
+      "Bash(wsl -e bash -c \"cp /mnt/f/claude/myshadowsocks/gradlew /mnt/f/claude/myshadowsocks_sampleapp/ && cp /mnt/f/claude/myshadowsocks/gradlew.bat /mnt/f/claude/myshadowsocks_sampleapp/ && mkdir -p /mnt/f/claude/myshadowsocks_sampleapp/gradle/wrapper && cp /mnt/f/claude/myshadowsocks/gradle/wrapper/gradle-wrapper.jar /mnt/f/claude/myshadowsocks_sampleapp/gradle/wrapper/ && cp /mnt/f/claude/myshadowsocks/gradle/wrapper/gradle-wrapper.properties /mnt/f/claude/myshadowsocks_sampleapp/gradle/wrapper/ && echo ''done''\")",
+      "Bash(find F:/claude/myshadowsocks/mobile/src/main/res/mipmap-mdpi -name *.png)",
+      "Bash(find F:/claude/myshadowsocks/mobile/src/main/res -name ic_launcher*)",
+      "Bash(wsl -e:*)"
     ]
   }
 }
