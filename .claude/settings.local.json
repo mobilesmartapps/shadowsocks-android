@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git clone:*)",
+      "Bash(wsl -e bash -c \"cd /mnt/f/claude/myshadowsocks && cat local.properties 2>/dev/null\")",
+      "Bash(wsl -e bash -c \"java -version 2>&1; echo JAVA_HOME=$JAVA_HOME; ls /home/sgnav/android-sdk/ndk/ 2>/dev/null; ls /home/sgnav/android-sdk/platforms/ 2>/dev/null; ls /home/sgnav/android-sdk/build-tools/ 2>/dev/null\")",
+      "Bash(wsl -e bash -c \":*)",
+      "Bash(wsl -e bash -c \"cat /mnt/f/claude/myshadowsocks/.gitmodules 2>/dev/null || echo ''NO GITMODULES''\")",
+      "Bash(wsl -e bash -c \"cd /mnt/f/claude/myshadowsocks && git submodule update --init --recursive 2>&1\")"
+    ]
+  }
+}
