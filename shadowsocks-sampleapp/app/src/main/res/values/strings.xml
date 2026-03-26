@@ -2,4 +2,8 @@
     <string name="app_name">Shadowsocks VPN</string>
     <string name="connect">Connect</string>
     <string name="disconnect">Disconnect</string>
+    <string name="config_label">Server Config (JSON)</string>
+    <string name="config_hint">Paste your server config JSON here…</string>
+    <string name="error_empty_config">Config cannot be empty</string>
+    <string name="error_invalid_config">Invalid JSON config: </string>
 </resources>

@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Bundle
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.example.shadowsockssample.databinding.ActivityMainBinding
@@ -32,29 +33,28 @@ class MainActivity : AppCompatActivity() {
         pendingConfig = null
     }
 
-    // ── Sample server config ──────────────────────────────────────────────────
-    // Replace with your real server details
-    private val sampleConfigJson = """
-        {
-            "ip": "194.233.87.174",
-            "country_code": "SG",
-            "country_name": "Singapore",
-            "last_updated_at": 1771836132,
-            "ss": {
-                "password": "qL293fzV4egalE4hKqlx3c",
-                "port": 2342,
-                "method": "chacha20-ietf-poly1305"
-            },
-            "status": { "last_min_traffic": 0 },
-            "change_location": false
-        }
-    """.trimIndent()
+    // Default placeholder shown in the text box on first launch
+    private val defaultConfigJson = """
+{
+    "ip": "194.233.87.174",
+    "country_code": "SG",
+    "country_name": "Singapore",
+    "last_updated_at": 1771836132,
+    "ss": {
+        "password": "qL293fzV4egalE4hKqlx3c",
+        "port": 2342,
+        "method": "chacha20-ietf-poly1305"
+    },
+    "status": { "last_min_traffic": 0 },
+    "change_location": false
+}""".trimIndent()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        binding.etConfig.setText(defaultConfigJson)
         binding.btnConnect.setOnClickListener { onConnectClicked() }
         binding.btnDisconnect.setOnClickListener { onDisconnectClicked() }
 
@@ -64,8 +64,26 @@ class MainActivity : AppCompatActivity() {
     // ── Button handlers ───────────────────────────────────────────────────────
 
     private fun onConnectClicked() {
+        // Dismiss keyboard
+        currentFocus?.let {
+            (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
+                .hideSoftInputFromWindow(it.windowToken, 0)
+        }
+
+        val json = binding.etConfig.text.toString().trim()
+        if (json.isEmpty()) {
+            binding.etConfig.error = getString(R.string.error_empty_config)
+            return
+        }
+
+        val config = try {
+            ShadowsocksConfig.fromJson(json)
+        } catch (e: Exception) {
+            binding.etConfig.error = getString(R.string.error_invalid_config) + e.message
+            return
+        }
+
         setButtonsEnabled(false)
-        val config = ShadowsocksConfig.fromJson(sampleConfigJson)
 
         // Check VPN permission first
         val permIntent: Intent? = ShadowsocksSDK.prepareVpn(this)
