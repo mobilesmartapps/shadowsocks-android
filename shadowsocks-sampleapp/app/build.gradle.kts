@@ -44,7 +44,8 @@ android {
 
 dependencies {
     // ── Local SDK AARs ────────────────────────────────────────────────────
-    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
+    debugImplementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*-debug.aar"))))
+    releaseImplementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*-release.aar"))))
 
     // ── Transitive deps required by shadowsocks-sdk / core / plugin ───────
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
