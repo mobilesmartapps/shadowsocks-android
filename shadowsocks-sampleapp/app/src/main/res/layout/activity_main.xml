@@ -91,5 +91,23 @@
             android:text="@string/disconnect"
             android:enabled="false" />
 
+        <!-- IP address -->
+        <Button
+            android:id="@+id/btn_show_ip"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/show_my_ip"
+            android:layout_marginTop="24dp" />
+
+        <TextView
+            android:id="@+id/tv_ip"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="16sp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="8dp"
+            android:fontFamily="monospace" />
+
     </LinearLayout>
 </ScrollView>

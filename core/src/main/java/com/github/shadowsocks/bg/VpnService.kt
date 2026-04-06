@@ -169,7 +169,7 @@ class VpnService : BaseVpnService(), BaseService.Interface {
         val me = packageName
         if (profile.proxyApps) {
             profile.individual.split('\n')
-                    .filter { it != me }
+                    .filter { !profile.bypass || it != me }
                     .forEach {
                         try {
                             if (profile.bypass) builder.addDisallowedApplication(it)

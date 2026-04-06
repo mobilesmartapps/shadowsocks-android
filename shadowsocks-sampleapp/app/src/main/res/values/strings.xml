@@ -6,4 +6,5 @@
     <string name="config_hint">Paste your server config JSON here…</string>
     <string name="error_empty_config">Config cannot be empty</string>
     <string name="error_invalid_config">Invalid JSON config: </string>
+    <string name="show_my_ip">Show My IP</string>
 </resources>

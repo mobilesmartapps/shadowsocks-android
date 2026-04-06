@@ -46,6 +46,7 @@ object ShadowsocksSDK {
     private val connection = ShadowsocksConnection(listenForDeath = true)
     private var sdkCallback: ShadowsocksCallback? = null
     private var initialized = false
+    private val allowedApps = mutableSetOf<String>()
 
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -128,6 +129,42 @@ object ShadowsocksSDK {
         sdkCallback = null
     }
 
+    // ─── Per-app VPN ─────────────────────────────────────────────────────────
+
+    /**
+     * Adds an app to the VPN allowed list. When at least one app is added,
+     * only those apps will have their traffic routed through the VPN (per-app
+     * VPN mode). Call before [connect], or call [connect] again for changes
+     * to take effect on an active session.
+     *
+     * @param packageName Package name of the app to allow (e.g. "com.example.myapp").
+     */
+    @JvmStatic
+    fun addAllowedApp(packageName: String) {
+        allowedApps.add(packageName)
+    }
+
+    /**
+     * Removes an app from the VPN allowed list. If the list becomes empty,
+     * VPN reverts to device-wide mode. Call [connect] again for changes to
+     * take effect on an active session.
+     *
+     * @param packageName Package name of the app to remove.
+     */
+    @JvmStatic
+    fun removeAllowedApp(packageName: String) {
+        allowedApps.remove(packageName)
+    }
+
+    /**
+     * Clears all allowed apps, reverting VPN to device-wide mode.
+     * Call [connect] again for changes to take effect on an active session.
+     */
+    @JvmStatic
+    fun clearAllowedApps() {
+        allowedApps.clear()
+    }
+
     // ─── Status ───────────────────────────────────────────────────────────────
 
     /**
@@ -203,6 +240,15 @@ object ShadowsocksSDK {
         profile.remotePort = config.ss.port
         profile.password = config.ss.password
         profile.method = config.ss.method
+        // Apply per-app VPN config — device-wide if no apps have been added
+        if (allowedApps.isNotEmpty()) {
+            profile.proxyApps = true
+            profile.bypass = false
+            profile.individual = allowedApps.joinToString("\n")
+        } else {
+            profile.proxyApps = false
+            profile.individual = ""
+        }
         return if (existing != null) {
             ProfileManager.updateProfile(profile)
             profile

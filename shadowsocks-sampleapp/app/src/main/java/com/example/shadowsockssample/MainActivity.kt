@@ -14,6 +14,8 @@ import com.shadowsocks.sdk.ShadowsocksCallback
 import com.shadowsocks.sdk.ShadowsocksConfig
 import com.shadowsocks.sdk.ShadowsocksSDK
 import com.shadowsocks.sdk.ShadowsocksState
+import java.net.URL
+import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
@@ -59,6 +61,7 @@ class MainActivity : AppCompatActivity() {
         binding.etConfig.setText(defaultConfigJson)
         binding.btnConnect.setOnClickListener { onConnectClicked() }
         binding.btnDisconnect.setOnClickListener { onDisconnectClicked() }
+        binding.btnShowIp.setOnClickListener { onShowIpClicked() }
 
         updateUiForState(ShadowsocksSDK.getState())
     }
@@ -128,6 +131,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun startVpn(config: ShadowsocksConfig) {
         setStatus("Connecting…")
+        // Route only this app's traffic through the VPN
+        ShadowsocksSDK.addAllowedApp(packageName)
         ShadowsocksSDK.connect(this, config, object : ShadowsocksCallback {
             override fun onConnecting() = runOnUiThread {
                 updateUiForState(ShadowsocksState.CONNECTING)
@@ -154,6 +159,24 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
         })
+    }
+
+    // ── IP address ────────────────────────────────────────────────────────────
+
+    private fun onShowIpClicked() {
+        binding.tvIp.text = "Fetching…"
+        binding.btnShowIp.isEnabled = false
+        Executors.newSingleThreadExecutor().execute {
+            val ip = try {
+                URL("https://api.ipify.org").readText().trim()
+            } catch (e: Exception) {
+                "Error: ${e.message}"
+            }
+            runOnUiThread {
+                binding.tvIp.text = "IP: $ip"
+                binding.btnShowIp.isEnabled = true
+            }
+        }
     }
 
     // ── UI state ──────────────────────────────────────────────────────────────
