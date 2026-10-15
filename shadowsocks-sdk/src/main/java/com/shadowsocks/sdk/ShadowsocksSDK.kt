@@ -3,6 +3,7 @@ package com.shadowsocks.sdk
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import com.github.shadowsocks.Core
 import com.github.shadowsocks.aidl.IShadowsocksService
 import com.github.shadowsocks.aidl.ShadowsocksConnection
@@ -46,7 +47,9 @@ object ShadowsocksSDK {
     private val connection = ShadowsocksConnection(listenForDeath = true)
     private var sdkCallback: ShadowsocksCallback? = null
     private var initialized = false
+    private const val TAG = "ShadowsocksSDK"
     private val allowedApps = mutableSetOf<String>()
+    @Volatile private var excludedApps: Set<String> = emptySet()
 
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -124,6 +127,9 @@ object ShadowsocksSDK {
      */
     @JvmStatic
     fun disconnect(context: Context) {
+        // The excluded list belongs to one session: the host sets it again before the next connect(), so a
+        // forgotten call can never carry an old list into a later session.
+        excludedApps = emptySet()
         Core.stopService()
         connection.disconnect(context.applicationContext)
         sdkCallback = null
@@ -163,6 +169,29 @@ object ShadowsocksSDK {
     @JvmStatic
     fun clearAllowedApps() {
         allowedApps.clear()
+    }
+
+    /**
+     * Sets the apps that must NOT use the VPN: their traffic goes out on the normal connection
+     * (split tunneling). Every other app uses the VPN. The list is written into the profile at
+     * the same moment [connect] saves it, before the VPN service starts, so it is always in effect
+     * for that connection. Call [connect] again for changes to apply to an active session.
+     *
+     * The list applies to one session: [disconnect] clears it, so set it again before every [connect].
+     * It is ignored (and a warning is logged) while the allowed list ([addAllowedApp]) is non-empty,
+     * because that selects the opposite mode (only the listed apps use the VPN).
+     *
+     * @param packageNames Package names to exclude; an empty collection clears the list.
+     */
+    @JvmStatic
+    fun setExcludedApps(packageNames: Collection<String>) {
+        excludedApps = packageNames.toSet()
+    }
+
+    /** Clears the excluded list, so every app uses the VPN again. */
+    @JvmStatic
+    fun clearExcludedApps() {
+        excludedApps = emptySet()
     }
 
     // ─── Status ───────────────────────────────────────────────────────────────
@@ -240,13 +269,25 @@ object ShadowsocksSDK {
         profile.remotePort = config.ss.port
         profile.password = config.ss.password
         profile.method = config.ss.method
-        // Apply per-app VPN config — device-wide if no apps have been added
+        // Apply per-app VPN config — device-wide if no apps have been added. This runs before the
+        // service is started, which is what makes the lists reliable (the service reads the profile
+        // as soon as it starts, so a write made after connect() can arrive too late).
+        val excluded = excludedApps
+        if (allowedApps.isNotEmpty() && excluded.isNotEmpty()) {
+            Log.w(TAG, "Excluded apps (${excluded.size}) ignored: the allowed list is in use, which selects the opposite mode")
+        }
         if (allowedApps.isNotEmpty()) {
             profile.proxyApps = true
             profile.bypass = false
             profile.individual = allowedApps.joinToString("\n")
+        } else if (excluded.isNotEmpty()) {
+            // Split tunneling: the listed apps bypass the VPN, everything else uses it.
+            profile.proxyApps = true
+            profile.bypass = true
+            profile.individual = excluded.joinToString("\n")
         } else {
             profile.proxyApps = false
+            profile.bypass = false
             profile.individual = ""
         }
         return if (existing != null) {
