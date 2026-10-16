@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.github.shadowsocks.Core
+import com.github.shadowsocks.acl.Acl
 import com.github.shadowsocks.aidl.IShadowsocksService
 import com.github.shadowsocks.aidl.ShadowsocksConnection
 import com.github.shadowsocks.aidl.TrafficStats
@@ -50,6 +51,7 @@ object ShadowsocksSDK {
     private const val TAG = "ShadowsocksSDK"
     private val allowedApps = mutableSetOf<String>()
     @Volatile private var excludedApps: Set<String> = emptySet()
+    @Volatile private var bypassLan = false
 
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -130,6 +132,7 @@ object ShadowsocksSDK {
         // The excluded list belongs to one session: the host sets it again before the next connect(), so a
         // forgotten call can never carry an old list into a later session.
         excludedApps = emptySet()
+        bypassLan = false
         Core.stopService()
         connection.disconnect(context.applicationContext)
         sdkCallback = null
@@ -140,8 +143,8 @@ object ShadowsocksSDK {
     /**
      * Adds an app to the VPN allowed list. When at least one app is added,
      * only those apps will have their traffic routed through the VPN (per-app
-     * VPN mode). Call before [connect], or call [connect] again for changes
-     * to take effect on an active session.
+     * VPN mode). Call before [connect]. To change it for a running tunnel, call
+     * [disconnect] and then [connect] (the service ignores a second [connect] while running).
      *
      * @param packageName Package name of the app to allow (e.g. "com.example.myapp").
      */
@@ -152,8 +155,8 @@ object ShadowsocksSDK {
 
     /**
      * Removes an app from the VPN allowed list. If the list becomes empty,
-     * VPN reverts to device-wide mode. Call [connect] again for changes to
-     * take effect on an active session.
+     * VPN reverts to device-wide mode. To change it for a running tunnel, call
+     * [disconnect] and then [connect].
      *
      * @param packageName Package name of the app to remove.
      */
@@ -164,7 +167,7 @@ object ShadowsocksSDK {
 
     /**
      * Clears all allowed apps, reverting VPN to device-wide mode.
-     * Call [connect] again for changes to take effect on an active session.
+     * To change it for a running tunnel, call [disconnect] and then [connect].
      */
     @JvmStatic
     fun clearAllowedApps() {
@@ -175,7 +178,8 @@ object ShadowsocksSDK {
      * Sets the apps that must NOT use the VPN: their traffic goes out on the normal connection
      * (split tunneling). Every other app uses the VPN. The list is written into the profile at
      * the same moment [connect] saves it, before the VPN service starts, so it is always in effect
-     * for that connection. Call [connect] again for changes to apply to an active session.
+     * for that connection. To change the list for a running tunnel, call [disconnect] and then [connect]: the
+     * service ignores a second [connect] while it is running.
      *
      * The list applies to one session: [disconnect] clears it, so set it again before every [connect].
      * It is ignored (and a warning is logged) while the allowed list ([addAllowedApp]) is non-empty,
@@ -186,6 +190,19 @@ object ShadowsocksSDK {
     @JvmStatic
     fun setExcludedApps(packageNames: Collection<String>) {
         excludedApps = packageNames.toSet()
+    }
+
+    /**
+     * Lets traffic to the local network (private ranges such as 192.168.x.x and 10.x.x.x, plus multicast used by
+     * printers and TVs) bypass the VPN, so devices on the same Wi-Fi stay reachable. Everything else, including
+     * all internet traffic, still goes through the VPN. The route is written into the profile when [connect]
+     * saves it, before the VPN service starts. Applies to one session: [disconnect] resets it to false, so set it
+     * again before every [connect]. To change it for a running tunnel, call [disconnect] and then [connect]: the
+     * service ignores a second [connect] while it is running.
+     */
+    @JvmStatic
+    fun setBypassLan(enabled: Boolean) {
+        bypassLan = enabled
     }
 
     /** Clears the excluded list, so every app uses the VPN again. */
@@ -269,6 +286,8 @@ object ShadowsocksSDK {
         profile.remotePort = config.ss.port
         profile.password = config.ss.password
         profile.method = config.ss.method
+        // Routing: with the LAN bypass the VPN service leaves the private ranges out of the tunnel; otherwise all traffic.
+        profile.route = if (bypassLan) Acl.BYPASS_LAN else Acl.ALL
         // Apply per-app VPN config — device-wide if no apps have been added. This runs before the
         // service is started, which is what makes the lists reliable (the service reads the profile
         // as soon as it starts, so a write made after connect() can arrive too late).
