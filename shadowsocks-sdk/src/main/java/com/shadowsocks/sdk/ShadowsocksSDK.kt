@@ -49,9 +49,12 @@ object ShadowsocksSDK {
     private var sdkCallback: ShadowsocksCallback? = null
     private var initialized = false
     private const val TAG = "ShadowsocksSDK"
+    /** The library default for [Profile.remoteDns]. */
+    private const val DEFAULT_REMOTE_DNS = "dns.google"
     private val allowedApps = mutableSetOf<String>()
     @Volatile private var excludedApps: Set<String> = emptySet()
     @Volatile private var bypassLan = false
+    @Volatile private var remoteDns: String? = null
 
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -133,6 +136,7 @@ object ShadowsocksSDK {
         // forgotten call can never carry an old list into a later session.
         excludedApps = emptySet()
         bypassLan = false
+        remoteDns = null
         Core.stopService()
         connection.disconnect(context.applicationContext)
         sdkCallback = null
@@ -203,6 +207,29 @@ object ShadowsocksSDK {
     @JvmStatic
     fun setBypassLan(enabled: Boolean) {
         bypassLan = enabled
+    }
+
+    /**
+     * Chooses the DNS resolver the tunnel uses: DNS queries from the phone go through the tunnel to the server, which
+     * asks [host] on the device's behalf. [host] must be an IPv4 address such as "1.1.1.1", optionally with a port
+     * ("1.1.1.1:53"); see [DnsAddress]. null or blank means the library default. The value is written into the profile
+     * when [connect] saves it, before the VPN service starts. Applies to one session: [disconnect] resets it, so set it
+     * again before every [connect]. The query itself is plain DNS over the encrypted tunnel (the library has no
+     * DoH/DoT), so only the last hop, server to resolver, is unencrypted.
+     *
+     * An invalid address is not an error that stops the connection: it is logged and ignored, so the library default is
+     * used. Returns true when [host] was accepted (or cleared), false when it was rejected, so a caller can react.
+     */
+    @JvmStatic
+    fun setRemoteDns(host: String?): Boolean {
+        val value = host?.trim().orEmpty()
+        if (value.isNotEmpty() && !DnsAddress.isValid(value)) {
+            Log.w(TAG, "Ignoring invalid DNS address \"$host\": the library default is used")
+            remoteDns = null
+            return false
+        }
+        remoteDns = value.ifEmpty { null }
+        return true
     }
 
     /** Clears the excluded list, so every app uses the VPN again. */
@@ -288,6 +315,8 @@ object ShadowsocksSDK {
         profile.method = config.ss.method
         // Routing: with the LAN bypass the VPN service leaves the private ranges out of the tunnel; otherwise all traffic.
         profile.route = if (bypassLan) Acl.BYPASS_LAN else Acl.ALL
+        // DNS resolver: always written, so a value saved for an earlier session never lingers in a reused profile.
+        profile.remoteDns = remoteDns ?: DEFAULT_REMOTE_DNS
         // Apply per-app VPN config — device-wide if no apps have been added. This runs before the
         // service is started, which is what makes the lists reliable (the service reads the profile
         // as soon as it starts, so a write made after connect() can arrive too late).
