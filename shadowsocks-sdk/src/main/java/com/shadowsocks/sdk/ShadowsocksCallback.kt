@@ -13,6 +13,14 @@ interface ShadowsocksCallback {
     /** VPN tunnel is active and traffic is flowing. */
     fun onConnected() {}
 
+    /**
+     * The answer to [ShadowsocksSDK.attach]: the bind to the VPN service was made, and [state] is the service's state at
+     * that moment. It follows [onConnecting] or [onConnected] when the service was already starting or running, so a host
+     * can tell "no tunnel is running" (state idle) from "not bound yet". Fires once per [ShadowsocksSDK.attach], at once
+     * when the bind already existed, and not for binds made by [ShadowsocksSDK.connect].
+     */
+    fun onBound(state: ShadowsocksState) {}
+
     /** VPN tunnel has fully stopped. */
     fun onDisconnected() {}
 

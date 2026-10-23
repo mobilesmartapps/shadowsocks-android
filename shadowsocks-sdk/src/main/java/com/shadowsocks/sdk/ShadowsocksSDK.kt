@@ -55,6 +55,10 @@ object ShadowsocksSDK {
     @Volatile private var excludedApps: Set<String> = emptySet()
     @Volatile private var bypassLan = false
     @Volatile private var remoteDns: String? = null
+    /** True from the moment the service binder is delivered until it is released or lost. */
+    @Volatile private var bound = false
+    /** True from [attach] until the bind it asked for is made: only that bind is reported through onBound. */
+    @Volatile private var attachPending = false
 
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -112,6 +116,7 @@ object ShadowsocksSDK {
         check(initialized) { "ShadowsocksSDK is not initialized. Call init() first." }
 
         sdkCallback = callback
+        attachPending = false   // the bind of this connect is not an answer to attach()
 
         // Persist the server config as a Profile and activate it
         val profile = upsertProfile(config)
@@ -123,6 +128,29 @@ object ShadowsocksSDK {
         // Bind to the running service so we receive state + traffic callbacks
         connection.connect(context.applicationContext, serviceCallback)
         connection.bandwidthTimeout = 1000L   // traffic update every 1 s
+    }
+
+    /**
+     * Binds to the VPN service if it is already running, without starting a tunnel or saving a profile. Call it when the
+     * host app starts, so a tunnel that was started without [connect] (Android's Always-on VPN, or a host process that was
+     * killed while the service stayed up) is reported through [callback]: [ShadowsocksCallback.onConnected] or
+     * [ShadowsocksCallback.onConnecting] fire as soon as the bind is made, and traffic updates follow. When no service is
+     * running, nothing is reported and the state stays idle.
+     *
+     * [getState] answers from this bind, so it keeps saying idle until the bind is made (a moment after this call): use
+     * the callback, not [getState], to learn the state right after attaching. A later [connect] reuses the bind and only
+     * replaces the callback; [disconnect] releases it.
+     */
+    @JvmStatic
+    fun attach(context: Context, callback: ShadowsocksCallback) {
+        check(initialized) { "ShadowsocksSDK is not initialized. Call init() first." }
+        sdkCallback = callback
+        // Already bound (the host's view model was recreated): onServiceConnected will not fire again, so answer now.
+        // Otherwise the answer comes with the bind made below.
+        attachPending = !bound
+        connection.connect(context.applicationContext, serviceCallback)
+        connection.bandwidthTimeout = 1000L   // traffic update every 1 s once the bind is made
+        if (bound) callback.onBound(getState())
     }
 
     // ─── Disconnect ───────────────────────────────────────────────────────────
@@ -137,6 +165,8 @@ object ShadowsocksSDK {
         excludedApps = emptySet()
         bypassLan = false
         remoteDns = null
+        bound = false
+        attachPending = false
         Core.stopService()
         connection.disconnect(context.applicationContext)
         sdkCallback = null
@@ -257,6 +287,19 @@ object ShadowsocksSDK {
         }
     }
 
+    /**
+     * The server of the profile the service uses, or null when there is none. [connect] saves the profile (and makes it
+     * the active one) before it starts the service, and Always-on VPN starts the service from that same saved profile, so
+     * this is the server a running tunnel goes through. It reads storage, so it works before the bind of [attach] is made.
+     */
+    @JvmStatic
+    fun getActiveServer(): ShadowsocksServer? {
+        if (!initialized) return null
+        val profile = try { ProfileManager.getProfile(DataStore.profileId) } catch (_: Exception) { null } ?: return null
+        if (profile.host.isBlank()) return null
+        return ShadowsocksServer(profile.host, profile.name.orEmpty())
+    }
+
     // ─── Internal ─────────────────────────────────────────────────────────────
 
     private val serviceCallback = object : ShadowsocksConnection.Callback {
@@ -274,6 +317,7 @@ object ShadowsocksSDK {
         }
 
         override fun onServiceConnected(service: IShadowsocksService) {
+            bound = true
             // Sync current state immediately after binding
             val state = try { BaseService.State.entries[service.state] } catch (_: Exception) { return }
             when (state) {
@@ -281,13 +325,26 @@ object ShadowsocksSDK {
                 BaseService.State.Connected  -> sdkCallback?.onConnected()
                 else -> { /* nothing extra needed */ }
             }
+            if (attachPending) {
+                attachPending = false
+                sdkCallback?.onBound(when (state) {
+                    BaseService.State.Connecting -> ShadowsocksState.CONNECTING
+                    BaseService.State.Connected  -> ShadowsocksState.CONNECTED
+                    BaseService.State.Stopping   -> ShadowsocksState.STOPPING
+                    BaseService.State.Stopped    -> ShadowsocksState.STOPPED
+                    BaseService.State.Idle       -> ShadowsocksState.IDLE
+                })
+            }
         }
 
         override fun onServiceDisconnected() {
+            bound = false
             sdkCallback?.onDisconnected()
         }
 
         override fun onBinderDied() {
+            // The service process is gone: a later attach() must bind again instead of answering from a stale bind.
+            bound = false
             sdkCallback?.onError("VPN service died unexpectedly")
             sdkCallback?.onDisconnected()
         }
