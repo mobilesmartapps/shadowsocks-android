@@ -49,6 +49,8 @@ object ShadowsocksSDK {
     private var sdkCallback: ShadowsocksCallback? = null
     private var initialized = false
     private const val TAG = "ShadowsocksSDK"
+    /** How long [disconnect] waits for the service to report that it stopped before it lets go of the bind anyway. */
+    private const val RELEASE_TIMEOUT_MS = 8_000L
     /** The library default for [Profile.remoteDns]. */
     private const val DEFAULT_REMOTE_DNS = "dns.google"
     private val allowedApps = mutableSetOf<String>()
@@ -57,6 +59,19 @@ object ShadowsocksSDK {
     @Volatile private var remoteDns: String? = null
     /** True from the moment the service binder is delivered until it is released or lost. */
     @Volatile private var bound = false
+    /** The service's last reported state, kept so [disconnect] needs no (blocking) call into the service process. */
+    @Volatile private var lastState: BaseService.State? = null
+    /**
+     * True from a [disconnect] that has to wait for the service until the "stopped" report it asked for has arrived. That
+     * report can reach the callback after the host has already started its next [connect], and must not be handed to the
+     * new connect's callback as a disconnect.
+     */
+    @Volatile private var expectStopReport = false
+    /** True from [disconnect] until the service has reported that it stopped and the bind was let go. */
+    @Volatile private var releasePending = false
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val releaseTimeout = Runnable { releaseBind() }
+    private var appContext: Context? = null
     /** True from [attach] until the bind it asked for is made: only that bind is reported through onBound. */
     @Volatile private var attachPending = false
 
@@ -74,6 +89,7 @@ object ShadowsocksSDK {
         if (initialized) return
         @Suppress("UNCHECKED_CAST")
         Core.init(app, (notificationActivityClass.kotlin as KClass<out Any>))
+        appContext = app
         DataStore.initGlobal()
         initialized = true
     }
@@ -117,6 +133,10 @@ object ShadowsocksSDK {
 
         sdkCallback = callback
         attachPending = false   // the bind of this connect is not an answer to attach()
+        if (releasePending) {   // this connect keeps the bind that disconnect() was about to let go of
+            releasePending = false
+            mainHandler.removeCallbacks(releaseTimeout)
+        }
 
         // Persist the server config as a Profile and activate it
         val profile = upsertProfile(config)
@@ -145,6 +165,7 @@ object ShadowsocksSDK {
     fun attach(context: Context, callback: ShadowsocksCallback) {
         check(initialized) { "ShadowsocksSDK is not initialized. Call init() first." }
         sdkCallback = callback
+        if (releasePending) releaseBind()   // a bind about to be let go would lose this attach
         // Already bound (the host's view model was recreated): onServiceConnected will not fire again, so answer now.
         // Otherwise the answer comes with the bind made below.
         attachPending = !bound
@@ -165,11 +186,36 @@ object ShadowsocksSDK {
         excludedApps = emptySet()
         bypassLan = false
         remoteDns = null
+        attachPending = false
+        appContext = context.applicationContext
+        sdkCallback = null
+        Core.stopService()
+        // Keep the bind until the service has really stopped: getState() answers from it, so letting go at once made
+        // the state read "idle" while the service was still shutting down, and a connect() started right away was then
+        // ignored by the old service (it only starts from the stopped state) and never ran. The bind is released when
+        // the service reports that it stopped (see serviceCallback), or after a timeout if it never does.
+        // The state comes from the last report (lastState), not from a call into the service process, which could block
+        // the calling thread when that process is frozen.
+        val state = if (bound) lastState else null
+        if (state == null || state == BaseService.State.Idle || state == BaseService.State.Stopped) {
+            releaseBind()
+        } else {
+            expectStopReport = true
+            releasePending = true
+            mainHandler.removeCallbacks(releaseTimeout)
+            mainHandler.postDelayed(releaseTimeout, RELEASE_TIMEOUT_MS)
+        }
+    }
+
+    /** Lets go of the bind to the VPN service (the end of [disconnect]). */
+    private fun releaseBind() {
+        mainHandler.removeCallbacks(releaseTimeout)
+        releasePending = false
+        expectStopReport = false
+        lastState = null
         bound = false
         attachPending = false
-        Core.stopService()
-        connection.disconnect(context.applicationContext)
-        sdkCallback = null
+        appContext?.let { connection.disconnect(it) }
     }
 
     // ─── Per-app VPN ─────────────────────────────────────────────────────────
@@ -304,6 +350,17 @@ object ShadowsocksSDK {
 
     private val serviceCallback = object : ShadowsocksConnection.Callback {
         override fun stateChanged(state: BaseService.State, profileName: String?, msg: String?) {
+            lastState = state
+            val stopped = state == BaseService.State.Stopped || state == BaseService.State.Idle
+            if (stopped && expectStopReport) {
+                // The stop that disconnect() asked for. It is not the new connect's disconnect, even when connect() has
+                // already replaced the callback by the time this arrives.
+                expectStopReport = false
+                if (releasePending) releaseBind()
+                return
+            }
+            // A new session has started, so the report of the earlier stop has already gone by.
+            if (state == BaseService.State.Connecting || state == BaseService.State.Connected) expectStopReport = false
             when (state) {
                 BaseService.State.Connecting -> sdkCallback?.onConnecting()
                 BaseService.State.Connected  -> sdkCallback?.onConnected()
@@ -320,6 +377,7 @@ object ShadowsocksSDK {
             bound = true
             // Sync current state immediately after binding
             val state = try { BaseService.State.entries[service.state] } catch (_: Exception) { return }
+            lastState = state
             when (state) {
                 BaseService.State.Connecting -> sdkCallback?.onConnecting()
                 BaseService.State.Connected  -> sdkCallback?.onConnected()
@@ -339,12 +397,16 @@ object ShadowsocksSDK {
 
         override fun onServiceDisconnected() {
             bound = false
+            lastState = null
+            expectStopReport = false
             sdkCallback?.onDisconnected()
         }
 
         override fun onBinderDied() {
             // The service process is gone: a later attach() must bind again instead of answering from a stale bind.
             bound = false
+            lastState = null
+            expectStopReport = false
             sdkCallback?.onError("VPN service died unexpectedly")
             sdkCallback?.onDisconnected()
         }
